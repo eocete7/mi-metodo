@@ -1,7 +1,7 @@
 const FOOD=window.FOOD_DB||[], EX=window.EXERCISES_DB||[];
-const $=s=>document.querySelector(s), iso=d=>d.toISOString().slice(0,10), KEY='metodo-v20';
+const $=s=>document.querySelector(s), iso=d=>d.toISOString().slice(0,10), KEY='metodo-v100';
 let selected=iso(new Date()), foodCat='Todos', exCat='Todos', foodMode='all';
-let state=JSON.parse(localStorage.getItem(KEY)||'null')||JSON.parse(localStorage.getItem('metodo-v12')||localStorage.getItem('metodo-v11')||localStorage.getItem('metodo-v10')||'null')||JSON.parse(localStorage.getItem('metodo-v9')||'null')||{settings:{burnGoal:500,stepGoal:12000,minuteGoal:45,foodGoal:1800},days:{},fav:[],recent:[],plan:{days:3,time:45,next:0,active:[]}};
+let state=JSON.parse(localStorage.getItem(KEY)||'null')||JSON.parse(localStorage.getItem('metodo-v30')||localStorage.getItem('metodo-v20')||localStorage.getItem('metodo-v12')||localStorage.getItem('metodo-v11')||localStorage.getItem('metodo-v10')||'null')||JSON.parse(localStorage.getItem('metodo-v9')||'null')||{settings:{burnGoal:500,stepGoal:12000,minuteGoal:45,foodGoal:1800},days:{},fav:[],recent:[],plan:{days:3,time:45,next:0,active:[]}};
 const plans={2:[['Full Body A',['Goblet squat','Press suelo mancuernas','Remo mancuerna','Peso muerto rumano mancuernas','Plancha']],['Full Body B',['Sentadilla búlgara','Flexiones','Dominadas supinas','Hip thrust banco','Elevación piernas']]],
 3:[['Push',['Press banca mancuernas','Press militar mancuernas','Flexiones inclinadas','Elevaciones laterales','Extensión tríceps cabeza']],['Pull',['Dominadas pronas','Remo mancuerna','Remo invertido','Curl bíceps alterno','Face pull banda']],['Pierna',['Sentadilla barra','Peso muerto rumano mancuernas','Zancadas','Hip thrust banco','Plancha']]],
 4:[['Torso A',['Press banca mancuernas','Remo mancuerna','Press militar mancuernas','Curl bíceps alterno']],['Pierna A',['Goblet squat','Peso muerto rumano mancuernas','Sentadilla búlgara']],['Torso B',['Flexiones','Dominadas supinas','Remo invertido','Elevaciones laterales']],['Pierna B',['Sentadilla barra','Peso muerto convencional','Zancadas','Elevación piernas']]],
@@ -14,6 +14,121 @@ function fmt(n){return Math.round(n).toLocaleString('es-ES')}
 function norm(s){return String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')}
 function arc(sel,val,goal,r){let c=$(sel),circ=2*Math.PI*r;c.style.strokeDasharray=circ;c.style.strokeDashoffset=circ*(1-Math.min(val/Math.max(goal,1),1))}
 
+
+
+
+function macroGoals(){
+ let foodGoal=state.settings.foodGoal||1800;
+ let protein=Math.round(foodGoal*0.30/4), carbs=Math.round(foodGoal*0.40/4), fat=Math.round(foodGoal*0.30/9);
+ let p=$('#goalProtein'), c=$('#goalCarbs'), f=$('#goalFat');
+ if(p){p.textContent=protein+' g'; c.textContent=carbs+' g'; f.textContent=fat+' g';}
+}
+const QUICK_MEALS=[
+ {name:'Café + yogur', items:['Café con leche','Yogur proteico']},
+ {name:'Pollo + arroz', items:['Pechuga de pollo 150 g','Arroz cocido 150 g']},
+ {name:'Atún + pan', items:['Atún natural','Pan integral 50 g']},
+ {name:'Skyr + plátano', items:['Skyr','Plátano']},
+ {name:'Tortilla', items:['Huevo 100 g','Tomate 150 g']}
+];
+function renderQuickMeals(){
+ let el=$('#quickMeals'); if(!el)return;
+ el.innerHTML=QUICK_MEALS.map((m,i)=>`<button data-quickmeal="${i}">${m.name}</button>`).join('');
+}
+function addQuickMeal(i){
+ let m=QUICK_MEALS[i]; if(!m)return;
+ m.items.forEach(n=>{
+   let item=FOOD.find(f=>f[0]===n)||FOOD.find(f=>norm(f[0]).includes(norm(n).split(' ')[0]));
+   if(item) day().foods.push({name:item[0],kcal:item[2],protein:item[3],carbs:item[4],fat:item[5]});
+ });
+ save();
+}
+function weeklyVolume(){
+ let now=new Date(selected), total=0, sets=0, reps=0;
+ for(let i=0;i<7;i++){
+   let x=new Date(now); x.setDate(now.getDate()-i);
+   let d=state.days[iso(x)]||{training:[]};
+   (d.training||[]).forEach(t=>{
+     let s=parseFloat(t.sets)||0, r=parseFloat(String(t.reps).match(/\d+/)?.[0]||0), kg=parseFloat(t.kg)||0;
+     sets+=s; reps+=s*r; total+=s*r*kg;
+   });
+ }
+ let el=$('#volumeSummary'); if(!el)return;
+ el.innerHTML=`<div><small>Series</small><b>${fmt(sets)}</b></div><div><small>Reps</small><b>${fmt(reps)}</b></div><div><small>Volumen kg</small><b>${fmt(total)}</b></div>`;
+}
+function exportCsv(){
+ let rows=[['fecha','kcal_comida','proteina','hidratos','grasas','kcal_quemadas','minutos','ejercicios']];
+ Object.entries(state.days).sort().forEach(([k,d])=>{
+   rows.push([k,sum(d.foods||[],'kcal'),sum(d.foods||[],'protein'),sum(d.foods||[],'carbs'),sum(d.foods||[],'fat'),sum(d.activities||[],'kcal'),sum(d.activities||[],'minutes'),(d.training||[]).length]);
+ });
+ let csv=rows.map(r=>r.join(';')).join('\n');
+ let blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+ let a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='mi-metodo-resumen.csv'; a.click();
+}
+
+function monthDashboard(){
+ let now=new Date(selected), y=now.getFullYear(), m=now.getMonth();
+ let food=0,burn=0,workouts=0,days=0;
+ Object.entries(state.days).forEach(([k,d])=>{
+   let dt=new Date(k); if(dt.getFullYear()===y && dt.getMonth()===m){
+     days++; food+=sum(d.foods||[],'kcal'); burn+=sum(d.activities||[],'kcal'); if((d.training||[]).length)workouts++;
+   }
+ });
+ let el=$('#monthDashboard'); if(!el)return;
+ el.innerHTML=`<div><small>Kcal comidas</small><b>${fmt(food)}</b></div><div><small>Kcal quemadas</small><b>${fmt(burn)}</b></div><div><small>Entrenos</small><b>${workouts}</b></div>`;
+}
+const MEAL_TEMPLATES=[
+ ['Desayuno proteico',['Yogur proteico','Avena 50 g','Plátano']],
+ ['Comida base',['Pechuga de pollo 150 g','Arroz cocido 150 g','Brócoli 200 g']],
+ ['Cena ligera',['Merluza 200 g','Calabacín 200 g','Patata cocida 200 g']],
+ ['Snack',['Skyr','Almendras 30 g']],
+ ['Legumbres',['Lentejas 200 g','Huevo 100 g','Tomate 150 g']]
+];
+function makeMealPlan(){
+ let days=['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+ state.mealPlan=days.map((d,i)=>({day:d, meals:[MEAL_TEMPLATES[i%MEAL_TEMPLATES.length][0],MEAL_TEMPLATES[(i+1)%MEAL_TEMPLATES.length][0],MEAL_TEMPLATES[(i+2)%MEAL_TEMPLATES.length][0]]}));
+ save();
+}
+function renderMealPlan(){
+ let el=$('#mealPlan'); if(!el)return;
+ let p=state.mealPlan||[];
+ el.innerHTML=p.length?p.map(x=>`<div><span><b>${x.day}</b><br><small>${x.meals.join(' · ')}</small></span></div>`).join(''):'<div><small>Sin plan de comidas.</small></div>';
+}
+function makeShopping(){
+ let p=state.mealPlan||[]; let counts={};
+ p.forEach(day=>day.meals.forEach(m=>{
+   let tpl=MEAL_TEMPLATES.find(t=>t[0]===m); if(tpl)tpl[1].forEach(item=>counts[item]=(counts[item]||0)+1);
+ }));
+ state.shoppingList=Object.entries(counts).map(([name,n])=>({name,n}));
+ save();
+}
+function renderShopping(){
+ let el=$('#shoppingList'); if(!el)return;
+ let p=state.shoppingList||[];
+ el.innerHTML=p.length?p.map(x=>`<div><span><b>${x.name}</b><br><small>${x.n} vez/veces</small></span></div>`).join(''):'<div><small>Sin lista de compra.</small></div>';
+}
+function bodySummary(){
+ let ms=Object.values(state.days).flatMap(x=>x.measures||[]).filter(x=>x.weight);
+ let el=$('#bodySummary'); if(!el)return;
+ if(!ms.length){el.textContent='Añade medidas para ver tendencia.';return}
+ let last=ms[ms.length-1], prev=ms.length>1?ms[ms.length-2]:null;
+ let height=(state.profile&&state.profile.height)||null;
+ let txt=`Último peso: ${last.weight} kg. `;
+ if(prev) txt+=`Cambio: ${(last.weight-prev.weight).toFixed(1)} kg. `;
+ if(height){let bmi=(last.weight/((height/100)**2)).toFixed(1); txt+=`IMC aprox.: ${bmi}.`;}
+ el.textContent=txt;
+}
+function adaptiveTraining(){
+ let all=Object.entries(state.days).sort((a,b)=>a[0].localeCompare(b[0]));
+ let lastWorkout=[...all].reverse().find(([k,d])=>(d.training||[]).length);
+ let txt='Carga la siguiente sesión cuando vayas a entrenar.';
+ if(lastWorkout){
+   let days=Math.floor((new Date(selected)-new Date(lastWorkout[0]))/86400000);
+   if(days>=4) txt='Hace varios días que no entrenas: hoy conviene Full Body suave.';
+   else if(days===1) txt='Entrenaste ayer: prioriza recuperación o cambia grupo muscular.';
+   else txt='Puedes continuar con la siguiente sesión del plan.';
+ }
+ let el=$('#adaptiveTraining'); if(el)el.textContent=txt;
+}
 
 function activeDaysLast(n){
  let c=0, now=new Date(selected);
@@ -90,13 +205,13 @@ function applyProfile(form){
  let bmr=10*w+6.25*h-5*a-161; // aproximación femenina; editable después
  let cal=Math.round(bmr*1.45);
  if(goal==='lose') cal-=350; if(goal==='gain') cal+=250;
- state.settings.foodGoal=Math.max(1200,cal);
+ state.profile={age:a,weight:w,height:h,goal:goal};state.settings.foodGoal=Math.max(1200,cal);
  state.settings.minuteGoal=45;
  state.settings.burnGoal=goal==='lose'?550:450;
  save();
 }
 
-function render(){dates();let d=day(),s=state.settings,b=sum(d.activities,'kcal'),steps=sum(d.activities,'steps'),mins=sum(d.activities,'minutes'),food=sum(d.foods,'kcal'),p=sum(d.foods,'protein'),c=sum(d.foods,'carbs'),f=sum(d.foods,'fat');$('#burned').textContent=fmt(b);$('#steps').textContent=fmt(steps);$('#minutes').textContent=fmt(mins);$('#goalBurn').textContent=s.burnGoal;$('#goalFood').textContent=s.foodGoal;$('#homeFood').textContent=fmt(food)+' kcal';$('#homeBalance').textContent=fmt(food-b)+' kcal';$('#dietTotal').textContent=fmt(food);$('#protein').textContent=fmt(p)+'g';$('#carbs').textContent=fmt(c)+'g';$('#fat').textContent=fmt(f)+'g';let ms=Object.values(state.days).flatMap(x=>x.measures||[]);$('#homeWeight').textContent=ms.length&&ms[ms.length-1].weight?ms[ms.length-1].weight+' kg':'—';arc('#burnRing',b,s.burnGoal,102);arc('#stepsRing',steps,s.stepGoal,61);arc('#minutesRing',mins,s.minuteGoal,61);foodCats();foodLib();exCats();exLib();lists();planRender();records();coach(b,steps,mins,food,s);drawWeek();drawWeight(ms);weeklySummary();recipeButtons();streak();achievements();renderWeekPlan()}
+function render(){dates();let d=day(),s=state.settings,b=sum(d.activities,'kcal'),steps=sum(d.activities,'steps'),mins=sum(d.activities,'minutes'),food=sum(d.foods,'kcal'),p=sum(d.foods,'protein'),c=sum(d.foods,'carbs'),f=sum(d.foods,'fat');$('#burned').textContent=fmt(b);$('#steps').textContent=fmt(steps);$('#minutes').textContent=fmt(mins);$('#goalBurn').textContent=s.burnGoal;$('#goalFood').textContent=s.foodGoal;$('#homeFood').textContent=fmt(food)+' kcal';$('#homeBalance').textContent=fmt(food-b)+' kcal';$('#dietTotal').textContent=fmt(food);$('#protein').textContent=fmt(p)+'g';$('#carbs').textContent=fmt(c)+'g';$('#fat').textContent=fmt(f)+'g';let ms=Object.values(state.days).flatMap(x=>x.measures||[]);$('#homeWeight').textContent=ms.length&&ms[ms.length-1].weight?ms[ms.length-1].weight+' kg':'—';arc('#burnRing',b,s.burnGoal,102);arc('#stepsRing',steps,s.stepGoal,61);arc('#minutesRing',mins,s.minuteGoal,61);foodCats();foodLib();exCats();exLib();lists();planRender();records();coach(b,steps,mins,food,s);drawWeek();drawWeight(ms);weeklySummary();recipeButtons();streak();achievements();renderWeekPlan();monthDashboard();renderMealPlan();renderShopping();bodySummary();adaptiveTraining();macroGoals();renderQuickMeals();weeklyVolume()}
 function dates(){let now=new Date(),h='';for(let i=-3;i<=3;i++){let x=new Date(now);x.setDate(now.getDate()+i);let k=iso(x);h+=`<button class="${k===selected?'active':''}" data-date="${k}">${x.toLocaleDateString('es-ES',{weekday:'short'}).slice(0,3).toUpperCase()}<br>${x.getDate()}</button>`}$('#dates').innerHTML=h}
 function foodCats(){let cats=['Todos',...new Set(FOOD.map(x=>x[1]))];$('#foodCats').innerHTML=cats.map(c=>`<button class="${c===foodCat?'active':''}" data-foodcat="${c}">${c}</button>`).join('')}
 function exCats(){let cats=['Todos',...new Set(EX.map(x=>x[2]))];$('#exerciseCats').innerHTML=cats.map(c=>`<button class="${c===exCat?'active':''}" data-excat="${c}">${c}</button>`).join('')}
@@ -114,7 +229,7 @@ function coach(b,steps,m,food,s){let rm=Math.max(s.minuteGoal-m,0),rf=Math.max(s
 function drawWeek(){let c=$('#weekChart'),ctx=c.getContext('2d'),w=c.width=c.clientWidth*devicePixelRatio,h=c.height=120*devicePixelRatio;ctx.clearRect(0,0,w,h);let vals=[],now=new Date(selected);for(let i=6;i>=0;i--){let x=new Date(now);x.setDate(now.getDate()-i);vals.push(sum((state.days[iso(x)]||{activities:[]}).activities,'kcal'))}let max=Math.max(state.settings.burnGoal,...vals,1),step=w/6;ctx.strokeStyle='#74f14d';ctx.lineWidth=5*devicePixelRatio;ctx.beginPath();vals.forEach((v,i)=>{let x=i*step,y=h-(v/max)*h*.75-h*.1;i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke()}
 function drawWeight(ms){let c=$('#weightChart'),ctx=c.getContext('2d'),w=c.width=c.clientWidth*devicePixelRatio,h=c.height=120*devicePixelRatio;ctx.clearRect(0,0,w,h);let vals=ms.filter(x=>x.weight).slice(-14).map(x=>+x.weight);if(vals.length<2)return;let mn=Math.min(...vals)-1,mx=Math.max(...vals)+1,step=w/(vals.length-1);ctx.strokeStyle='#74f14d';ctx.lineWidth=5*devicePixelRatio;ctx.beginPath();vals.forEach((v,i)=>{let x=i*step,y=h-((v-mn)/(mx-mn))*h*.8-h*.1;i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke()}
 function estimate(t,min){return Math.round(({walk:4.2,run:10,bike:7,gym:6}[t]||5)*min)}
-function parseSmartMeal(txt){let raw=txt, s=norm(txt), totals={name:'Estimación: '+raw.slice(0,45),kcal:0,protein:0,carbs:0,fat:0}, matched=false;let re=/(\d+)\s*g?\s+([a-záéíóúñ ]+)/g, m;while((m=re.exec(s))){let grams=+m[1], term=m[2].trim().split(/ y |,| con /)[0].trim();let item=FOOD.find(f=>norm(f[0]).includes(term)||term.includes(norm(f[0]).split(' ')[0]));if(item){let factor=grams/100;totals.kcal+=item[2]*factor;totals.protein+=item[3]*factor;totals.carbs+=item[4]*factor;totals.fat+=item[5]*factor;matched=true}}if(!matched){if(s.includes('pizza'))totals={name:'Pizza estimada',kcal:850,protein:35,carbs:95,fat:35};else if(s.includes('bocadillo'))totals={name:'Bocadillo estimado',kcal:520,protein:28,carbs:60,fat:16};else if(s.includes('tortilla'))totals={name:'Tortilla estimada',kcal:450,protein:22,carbs:30,fat:25};else if(s.includes('ensalada'))totals={name:'Ensalada estimada',kcal:320,protein:18,carbs:18,fat:16};else totals={name:'Comida estimada',kcal:450,protein:22,carbs:45,fat:15}}['kcal','protein','carbs','fat'].forEach(k=>totals[k]=Math.round(totals[k]));return totals}
+function parseSmartMeal(txt){let raw=txt, s=norm(txt), totals={name:'Estimación: '+raw.slice(0,45),kcal:0,protein:0,carbs:0,fat:0}, matched=false;let re=/(\d+)\s*g?\s+([a-záéíóúñ ]+)/g, m;while((m=re.exec(s))){let grams=+m[1], term=m[2].trim().split(/ y |,| con /)[0].trim();let aliases={pollo:'pechuga de pollo',arroz:'arroz cocido',pasta:'pasta cocida',atun:'atún natural',atún:'atún natural',yogur:'yogur proteico',patata:'patata cocida',huevo:'huevo'};let findTerm=aliases[term]||term;let item=FOOD.find(f=>norm(f[0]).includes(findTerm)||findTerm.includes(norm(f[0]).split(' ')[0]));if(item){let factor=grams/100;totals.kcal+=item[2]*factor;totals.protein+=item[3]*factor;totals.carbs+=item[4]*factor;totals.fat+=item[5]*factor;matched=true}}if(!matched){if(s.includes('pizza'))totals={name:'Pizza estimada',kcal:850,protein:35,carbs:95,fat:35};else if(s.includes('bocadillo'))totals={name:'Bocadillo estimado',kcal:520,protein:28,carbs:60,fat:16};else if(s.includes('tortilla'))totals={name:'Tortilla estimada',kcal:450,protein:22,carbs:30,fat:25};else if(s.includes('ensalada'))totals={name:'Ensalada estimada',kcal:320,protein:18,carbs:18,fat:16};else totals={name:'Comida estimada',kcal:450,protein:22,carbs:45,fat:15}}['kcal','protein','carbs','fat'].forEach(k=>totals[k]=Math.round(totals[k]));return totals}
 let timer=null;function startTimer(sec){clearInterval(timer);let left=sec;$('#timerText').textContent='Descanso: '+left+' s';timer=setInterval(()=>{left--;$('#timerText').textContent=left>0?'Descanso: '+left+' s':'Descanso terminado';if(left<=0){clearInterval(timer);if(navigator.vibrate)navigator.vibrate([200,100,200]);}},1000)}
 $('#activityBtn').onclick=()=>$('#activityDialog').showModal();$('#settingsBtn').onclick=()=>{let f=$('#settingsForm'),s=state.settings;f.burnGoal.value=s.burnGoal;f.stepGoal.value=s.stepGoal;f.minuteGoal.value=s.minuteGoal;f.foodGoal.value=s.foodGoal;$('#settingsDialog').showModal()};
 $('#activityForm').onsubmit=e=>{e.preventDefault();let f=e.target,min=+f.minutes.value||0;day().activities.push({type:f.type.value,minutes:min,steps:+f.steps.value||0,kcal:+f.kcal.value||estimate(f.type.value,min)});f.reset();$('#activityDialog').close();save()};
@@ -124,7 +239,7 @@ $('#measureForm').onsubmit=e=>{e.preventDefault();let f=e.target;day().measures.
 $('#profileForm').onsubmit=e=>{e.preventDefault();applyProfile(e.target)};
 $('#foodSearch').oninput=foodLib;$('#exerciseSearch').oninput=exLib;
 document.body.addEventListener('input',e=>{if(e.target.dataset.aw){state.plan.active[+e.target.dataset.aw][e.target.dataset.field]=e.target.value;persist();}});
-document.body.onclick=e=>{if(e.target.classList.contains('tab')){document.querySelectorAll('.tab,.page').forEach(x=>x.classList.remove('active'));e.target.classList.add('active');$('#'+e.target.dataset.page).classList.add('active');render()}if(e.target.dataset.date){selected=e.target.dataset.date;render()}if(e.target.dataset.foodcat){foodCat=e.target.dataset.foodcat;foodMode='all';render()}if(e.target.id==='favBtn'){foodMode='fav';foodLib()}if(e.target.id==='recBtn'){foodMode='recent';foodLib()}if(e.target.id==='allFoodBtn'){foodMode='all';foodLib()}if(e.target.dataset.fav){let i=+e.target.dataset.fav;state.fav=state.fav.includes(i)?state.fav.filter(x=>x!==i):[i,...state.fav];save()}if(e.target.dataset.food){let i=+e.target.dataset.food,x=FOOD[i];state.recent=[i,...state.recent.filter(r=>r!==i)].slice(0,20);day().foods.push({name:x[0],kcal:x[2],protein:x[3],carbs:x[4],fat:x[5]});save()}if(e.target.id==='estimateMeal'){let meal=parseSmartMeal($('#aiText').value);day().foods.push(meal);$('#aiText').value='';save()}if(e.target.dataset.recipe){addRecipe(+e.target.dataset.recipe)}if(e.target.id==='makeWeekPlan'){makeWeekPlan()}if(e.target.dataset.excat){exCat=e.target.dataset.excat;render()}if(e.target.dataset.ex){let x=EX[+e.target.dataset.ex];day().training.push({name:x[0],sets:x[3],reps:x[4],kg:0,notes:x[5]});save()}if(e.target.classList.contains('del')){day()[e.target.dataset.list].splice(+e.target.dataset.i,1);save()}if(e.target.dataset.plan){state.plan.days=+e.target.dataset.plan;state.plan.next=0;state.plan.active=[];save()}if(e.target.dataset.time){state.plan.time=+e.target.dataset.time;save()}if(e.target.id==='loadRoutine')loadRoutine();if(e.target.id==='finishWorkout')finishWorkout();if(e.target.dataset.complete){let x=state.plan.active[+e.target.dataset.complete];x.done=!x.done;save()}if(e.target.dataset.rest)startTimer(+e.target.dataset.rest);if(e.target.id==='exportData'){let blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='mi-metodo-backup.json';a.click();}};
+document.body.onclick=e=>{if(e.target.classList.contains('tab')){document.querySelectorAll('.tab,.page').forEach(x=>x.classList.remove('active'));e.target.classList.add('active');$('#'+e.target.dataset.page).classList.add('active');render()}if(e.target.dataset.date){selected=e.target.dataset.date;render()}if(e.target.dataset.foodcat){foodCat=e.target.dataset.foodcat;foodMode='all';render()}if(e.target.id==='favBtn'){foodMode='fav';foodLib()}if(e.target.id==='recBtn'){foodMode='recent';foodLib()}if(e.target.id==='allFoodBtn'){foodMode='all';foodLib()}if(e.target.dataset.fav){let i=+e.target.dataset.fav;state.fav=state.fav.includes(i)?state.fav.filter(x=>x!==i):[i,...state.fav];save()}if(e.target.dataset.food){let i=+e.target.dataset.food,x=FOOD[i];state.recent=[i,...state.recent.filter(r=>r!==i)].slice(0,20);day().foods.push({name:x[0],kcal:x[2],protein:x[3],carbs:x[4],fat:x[5]});save()}if(e.target.id==='estimateMeal'){let meal=parseSmartMeal($('#aiText').value);day().foods.push(meal);$('#aiText').value='';save()}if(e.target.dataset.recipe){addRecipe(+e.target.dataset.recipe)}if(e.target.id==='makeWeekPlan'){makeWeekPlan()}if(e.target.id==='makeMealPlan'){makeMealPlan()}if(e.target.id==='makeShopping'){makeShopping()}if(e.target.dataset.quickmeal){addQuickMeal(+e.target.dataset.quickmeal)}if(e.target.id==='exportCsv'){exportCsv()}if(e.target.dataset.excat){exCat=e.target.dataset.excat;render()}if(e.target.dataset.ex){let x=EX[+e.target.dataset.ex];day().training.push({name:x[0],sets:x[3],reps:x[4],kg:0,notes:x[5]});save()}if(e.target.classList.contains('del')){day()[e.target.dataset.list].splice(+e.target.dataset.i,1);save()}if(e.target.dataset.plan){state.plan.days=+e.target.dataset.plan;state.plan.next=0;state.plan.active=[];save()}if(e.target.dataset.time){state.plan.time=+e.target.dataset.time;save()}if(e.target.id==='loadRoutine')loadRoutine();if(e.target.id==='finishWorkout')finishWorkout();if(e.target.dataset.complete){let x=state.plan.active[+e.target.dataset.complete];x.done=!x.done;save()}if(e.target.dataset.rest)startTimer(+e.target.dataset.rest);if(e.target.id==='exportData'){let blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='mi-metodo-backup.json';a.click();}};
 $('#importData').onchange=e=>{let f=e.target.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{state=JSON.parse(r.result);save()};r.readAsText(f)};
-if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js?v=20').then(r=>r.update()).catch(()=>{});
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js?v=100').then(r=>r.update()).catch(()=>{});
 render();

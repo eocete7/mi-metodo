@@ -1,3 +1,3 @@
-# Mi Método v20 PRO
+# Mi Método v100 Final
 
-Versión PRO con dashboard avanzado, plan semanal automático, logros, rachas, alimentos ampliados, entrenamiento adaptativo, medidas, exportación/importación y corrección de caché.
+Versión final con dieta rápida, macros objetivo, recetas, planificador semanal, lista de compra, entrenamiento tipo Hevy, volumen semanal, récords, rachas, logros, progreso corporal, exportación CSV/JSON e importación.
