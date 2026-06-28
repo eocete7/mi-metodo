@@ -1,3 +1,3 @@
-# Mi Método
+# Mi Método v9
 
-Aplicación web/PWA de dieta y entrenamiento sin máquinas.
+App de dieta y entrenamiento sin máquinas con plan adaptativo, alimentos ampliados y exportación.
