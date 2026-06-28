@@ -1,3 +1,3 @@
-# Mi Método v12 plus
+# Mi Método v20 PRO
 
-Versión final plus con alimentos ampliados, plan adaptativo, recetas rápidas, perfil de objetivos, medidas, exportación/importación y corrección de caché.
+Versión PRO con dashboard avanzado, plan semanal automático, logros, rachas, alimentos ampliados, entrenamiento adaptativo, medidas, exportación/importación y corrección de caché.
