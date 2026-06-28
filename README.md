@@ -1,3 +1,3 @@
-# Mi Método v9
+# Mi Método v12 plus
 
-App de dieta y entrenamiento sin máquinas con plan adaptativo, alimentos ampliados y exportación.
+Versión final plus con alimentos ampliados, plan adaptativo, recetas rápidas, perfil de objetivos, medidas, exportación/importación y corrección de caché.
